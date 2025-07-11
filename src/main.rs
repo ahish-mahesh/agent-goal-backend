@@ -19,12 +19,15 @@
 //! - **error**: Custom error types and HTTP error responses
 
 // Module declarations - These tell Rust about our other source files
-mod config;      // Configuration management (config.rs)
-mod error;       // Error handling types (error.rs) 
-mod state;       // Application state management (state.rs)
-mod health;      // Health check endpoints (health.rs)
-mod middleware;  // Custom middleware (middleware/ directory)
-mod handlers;    // HTTP request handlers (handlers/ directory)
+mod config;        // Configuration management (config.rs)
+mod error;         // Error handling types (error.rs) 
+mod state;         // Application state management (state.rs)
+mod health;        // Health check endpoints (health.rs)
+mod middleware;    // Custom middleware (middleware/ directory)
+mod handlers;      // HTTP request handlers (handlers/ directory)
+mod audio;         // Audio processing and buffer management
+mod transcription; // Speech-to-text transcription with Whisper
+mod websocket;     // WebSocket handlers for real-time audio streaming
 
 // External crate imports - These are dependencies from Cargo.toml
 use actix_cors::Cors;  // Cross-Origin Resource Sharing support
@@ -113,7 +116,18 @@ async fn main() -> Result<()> {
                     .route("/metrics", web::get().to(health::detailed_metrics))
                     .route("/config", web::get().to(handlers::get_config))
                     .route("/config", web::put().to(handlers::update_config))
+                    // Model management endpoints
+                    .route("/models/whisper", web::get().to(handlers::list_whisper_models))
+                    .route("/models/whisper/load", web::post().to(handlers::load_whisper_model))
+                    .route("/models/whisper/unload", web::post().to(handlers::unload_whisper_model))
+                    .route("/models/status", web::get().to(handlers::get_model_status))
+                    // File transcription test endpoint
+                    .route("/transcribe/file", web::post().to(handlers::transcribe_file))
             )
+            // Debug endpoints for development and testing
+            .configure(handlers::configure_debug_routes)
+            // WebSocket endpoint for real-time audio streaming
+            .route("/ws/audio", web::get().to(websocket::audio_websocket))
             // Also provide health check at root level for convenience
             .route("/health", web::get().to(health::health_check))
     })

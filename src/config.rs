@@ -40,6 +40,7 @@ pub struct AppConfig {
     pub server: ServerConfig,
     pub models: ModelsConfig,
     pub performance: PerformanceConfig,
+    pub audio: AudioConfig,
 }
 
 /// Server-specific configuration settings.
@@ -77,15 +78,40 @@ pub struct ModelsConfig {
 /// 
 /// ## Fields:
 /// - `max_concurrent_sessions`: Maximum number of audio transcription sessions to handle simultaneously
-/// - `audio_buffer_size`: Size of audio buffers in bytes (affects latency vs. reliability)
+/// - `max_model_memory_mb`: Maximum memory to allocate for loaded models (in MB)
 /// 
 /// ## Tuning guidelines:
 /// - Higher concurrent sessions: More users, but requires more CPU/memory
-/// - Larger audio buffers: More reliable processing, but higher latency
+/// - Higher model memory limit: Can load larger/more models, but uses more RAM
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PerformanceConfig {
     pub max_concurrent_sessions: usize,  // usize = platform-specific unsigned integer (usually 64-bit)
-    pub audio_buffer_size: usize,
+    pub max_model_memory_mb: u32,        // Memory limit for AI models in megabytes
+}
+
+/// Audio processing configuration settings.
+/// 
+/// ## Fields:
+/// - `sample_rate`: Audio sample rate in Hz (16000 for Whisper compatibility)
+/// - `channels`: Number of audio channels (1 for mono, 2 for stereo)
+/// - `bit_depth`: Audio bit depth (16 for 16-bit PCM)
+/// - `buffer_duration_ms`: Audio buffer duration in milliseconds
+/// - `overlap_duration_ms`: Overlap between audio segments in milliseconds
+/// - `min_transcription_duration`: Minimum audio duration before transcription (seconds)
+/// - `max_transcription_duration`: Maximum audio duration per transcription (seconds)
+/// 
+/// ## Whisper Requirements:
+/// Whisper models work best with 16kHz, 16-bit, mono PCM audio.
+/// The buffer and overlap settings control real-time transcription behavior.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioConfig {
+    pub sample_rate: u32,                    // Audio sample rate (Hz)
+    pub channels: u8,                        // Number of audio channels
+    pub bit_depth: u8,                       // Audio bit depth
+    pub buffer_duration_ms: u32,             // Buffer duration (milliseconds)
+    pub overlap_duration_ms: u32,            // Overlap duration (milliseconds)
+    pub min_transcription_duration: f64,     // Minimum audio duration for transcription (seconds)
+    pub max_transcription_duration: f64,     // Maximum audio duration per transcription (seconds)
 }
 
 /// Provides default configuration values.
@@ -111,7 +137,16 @@ impl Default for AppConfig {
             },
             performance: PerformanceConfig {
                 max_concurrent_sessions: 10,   // Reasonable for most development machines
-                audio_buffer_size: 4096,       // 4KB buffer (good starting point)
+                max_model_memory_mb: 2048,     // 2GB memory limit for models
+            },
+            audio: AudioConfig {
+                sample_rate: 16000,            // 16kHz (Whisper's preferred sample rate)
+                channels: 1,                   // Mono audio
+                bit_depth: 16,                 // 16-bit PCM
+                buffer_duration_ms: 2000,      // 2 second audio buffer
+                overlap_duration_ms: 500,      // 500ms overlap between segments
+                min_transcription_duration: 0.5,  // Process audio >= 0.5 seconds
+                max_transcription_duration: 30.0, // Max 30 seconds per segment
             },
         }
     }
@@ -188,8 +223,33 @@ impl AppConfig {
             return Err(anyhow::anyhow!("Max concurrent sessions must be greater than 0"));
         }
 
-        if self.performance.audio_buffer_size == 0 {
-            return Err(anyhow::anyhow!("Audio buffer size must be greater than 0"));
+        if self.performance.max_model_memory_mb == 0 {
+            return Err(anyhow::anyhow!("Max model memory must be greater than 0"));
+        }
+
+        // Validate audio configuration
+        if self.audio.sample_rate == 0 {
+            return Err(anyhow::anyhow!("Audio sample rate must be greater than 0"));
+        }
+
+        if self.audio.channels == 0 {
+            return Err(anyhow::anyhow!("Audio channels must be greater than 0"));
+        }
+
+        if self.audio.bit_depth == 0 {
+            return Err(anyhow::anyhow!("Audio bit depth must be greater than 0"));
+        }
+
+        if self.audio.buffer_duration_ms == 0 {
+            return Err(anyhow::anyhow!("Audio buffer duration must be greater than 0"));
+        }
+
+        if self.audio.min_transcription_duration <= 0.0 {
+            return Err(anyhow::anyhow!("Minimum transcription duration must be greater than 0"));
+        }
+
+        if self.audio.max_transcription_duration <= self.audio.min_transcription_duration {
+            return Err(anyhow::anyhow!("Maximum transcription duration must be greater than minimum"));
         }
 
         Ok(())  // All validation passed
@@ -242,14 +302,79 @@ impl AppConfig {
             if let Some(sessions) = performance.get("max_concurrent_sessions").and_then(|v| v.as_u64()) {
                 self.performance.max_concurrent_sessions = sessions as usize;
             }
-            if let Some(buffer) = performance.get("audio_buffer_size").and_then(|v| v.as_u64()) {
-                self.performance.audio_buffer_size = buffer as usize;
+            if let Some(memory) = performance.get("max_model_memory_mb").and_then(|v| v.as_u64()) {
+                self.performance.max_model_memory_mb = memory as u32;
+            }
+        }
+
+        // Update audio configuration if provided
+        if let Some(audio) = partial_config.get("audio") {
+            if let Some(sample_rate) = audio.get("sample_rate").and_then(|v| v.as_u64()) {
+                self.audio.sample_rate = sample_rate as u32;
+            }
+            if let Some(channels) = audio.get("channels").and_then(|v| v.as_u64()) {
+                self.audio.channels = channels as u8;
+            }
+            if let Some(bit_depth) = audio.get("bit_depth").and_then(|v| v.as_u64()) {
+                self.audio.bit_depth = bit_depth as u8;
+            }
+            if let Some(buffer_duration) = audio.get("buffer_duration_ms").and_then(|v| v.as_u64()) {
+                self.audio.buffer_duration_ms = buffer_duration as u32;
+            }
+            if let Some(overlap_duration) = audio.get("overlap_duration_ms").and_then(|v| v.as_u64()) {
+                self.audio.overlap_duration_ms = overlap_duration as u32;
+            }
+            if let Some(min_duration) = audio.get("min_transcription_duration").and_then(|v| v.as_f64()) {
+                self.audio.min_transcription_duration = min_duration;
+            }
+            if let Some(max_duration) = audio.get("max_transcription_duration").and_then(|v| v.as_f64()) {
+                self.audio.max_transcription_duration = max_duration;
             }
         }
 
         // Validate the updated configuration to ensure it's still valid
         self.validate()?;
         Ok(())
+    }
+}
+
+impl AudioConfig {
+    /// Convert to AudioBufferConfig for use with audio processing modules.
+    pub fn to_buffer_config(&self) -> crate::audio::buffer::AudioBufferConfig {
+        crate::audio::buffer::AudioBufferConfig {
+            sample_rate: self.sample_rate,
+            channels: self.channels,
+            bit_depth: self.bit_depth,
+            buffer_duration_ms: self.buffer_duration_ms,
+            overlap_duration_ms: self.overlap_duration_ms,
+        }
+    }
+
+    /// Convert to TranscriptionConfig for use with transcription engine.
+    pub fn to_transcription_config(&self) -> crate::transcription::engine::TranscriptionConfig {
+        crate::transcription::engine::TranscriptionConfig {
+            language: Some("en".to_string()), // Default to English
+            min_audio_duration: self.min_transcription_duration,
+            max_audio_duration: self.max_transcription_duration,
+            enable_punctuation: true,
+            temperature: 0.0,
+            enable_word_timestamps: false,
+        }
+    }
+
+    /// Calculate the buffer size in samples.
+    pub fn buffer_size_samples(&self) -> usize {
+        (self.buffer_duration_ms as usize * self.sample_rate as usize) / 1000
+    }
+
+    /// Calculate the overlap size in samples.
+    pub fn overlap_size_samples(&self) -> usize {
+        (self.overlap_duration_ms as usize * self.sample_rate as usize) / 1000
+    }
+
+    /// Calculate bytes per second for this audio configuration.
+    pub fn bytes_per_second(&self) -> usize {
+        self.sample_rate as usize * self.channels as usize * (self.bit_depth as usize / 8)
     }
 }
 
@@ -276,6 +401,9 @@ mod tests {
         let config = AppConfig::default();
         assert_eq!(config.server.host, "127.0.0.1");
         assert_eq!(config.server.port, 8080);
+        assert_eq!(config.audio.sample_rate, 16000);
+        assert_eq!(config.audio.channels, 1);
+        assert_eq!(config.audio.bit_depth, 16);
         // Ensure the default config passes validation
         assert!(config.validate().is_ok());
     }
@@ -298,5 +426,28 @@ mod tests {
         assert_eq!(config.server.port, 9090);  // Port should be updated
         // Other fields should remain unchanged
         assert_eq!(config.server.host, "127.0.0.1");
+    }
+
+    /// Test audio configuration utility methods.
+    #[test]
+    fn test_audio_config_utilities() {
+        let audio_config = AudioConfig {
+            sample_rate: 16000,
+            channels: 1,
+            bit_depth: 16,
+            buffer_duration_ms: 2000,
+            overlap_duration_ms: 500,
+            min_transcription_duration: 0.5,
+            max_transcription_duration: 30.0,
+        };
+
+        // Test buffer size calculation: 2000ms * 16000Hz / 1000 = 32000 samples
+        assert_eq!(audio_config.buffer_size_samples(), 32000);
+        
+        // Test overlap size calculation: 500ms * 16000Hz / 1000 = 8000 samples
+        assert_eq!(audio_config.overlap_size_samples(), 8000);
+        
+        // Test bytes per second: 16000Hz * 1 channel * 2 bytes (16-bit) = 32000 bytes/sec
+        assert_eq!(audio_config.bytes_per_second(), 32000);
     }
 }

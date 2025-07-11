@@ -86,7 +86,7 @@ pub async fn detailed_metrics(state: web::Data<AppState>) -> HttpResponse {
         "memory": get_memory_info(),
         "performance": {
             "max_concurrent_sessions": state.get_config().performance.max_concurrent_sessions,
-            "audio_buffer_size": state.get_config().performance.audio_buffer_size
+            "max_model_memory_mb": state.get_config().performance.max_model_memory_mb
         }
     }))
 }

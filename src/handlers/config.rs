@@ -18,7 +18,16 @@ pub async fn get_config(state: web::Data<AppState>) -> Result<HttpResponse, AppE
             },
             "performance": {
                 "max_concurrent_sessions": config.performance.max_concurrent_sessions,
-                "audio_buffer_size": config.performance.audio_buffer_size
+                "max_model_memory_mb": config.performance.max_model_memory_mb
+            },
+            "audio": {
+                "sample_rate": config.audio.sample_rate,
+                "channels": config.audio.channels,
+                "bit_depth": config.audio.bit_depth,
+                "buffer_duration_ms": config.audio.buffer_duration_ms,
+                "overlap_duration_ms": config.audio.overlap_duration_ms,
+                "min_transcription_duration": config.audio.min_transcription_duration,
+                "max_transcription_duration": config.audio.max_transcription_duration
             }
         }
     })))
@@ -51,7 +60,16 @@ pub async fn update_config(
             },
             "performance": {
                 "max_concurrent_sessions": current_config.performance.max_concurrent_sessions,
-                "audio_buffer_size": current_config.performance.audio_buffer_size
+                "max_model_memory_mb": current_config.performance.max_model_memory_mb
+            },
+            "audio": {
+                "sample_rate": current_config.audio.sample_rate,
+                "channels": current_config.audio.channels,
+                "bit_depth": current_config.audio.bit_depth,
+                "buffer_duration_ms": current_config.audio.buffer_duration_ms,
+                "overlap_duration_ms": current_config.audio.overlap_duration_ms,
+                "min_transcription_duration": current_config.audio.min_transcription_duration,
+                "max_transcription_duration": current_config.audio.max_transcription_duration
             }
         }
     })))

@@ -138,6 +138,10 @@ The application uses structured JSON messages for real-time communication:
 - **Whisper:** Medium model (good accuracy for technical vocabulary)
 - **LLM:** Llama 3.1 8B (primary), Phi-3 Medium (alternative)
 
+## API reference
+
+- **Agreed API**: Refer to the voice_app_api_contract.md while developing the APIs. This is the agreed upon contract between fontend and backend for the APIs.
+
 ## Rust Best Practices (2025)
 
 ### Code Style and Formatting
