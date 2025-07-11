@@ -1,0 +1,11 @@
+[server]
+host = "127.0.0.1"
+port = 8080
+
+[models]
+whisper_model = "medium"
+llm_model = "llama3.1:8b"
+
+[performance]
+max_concurrent_sessions = 10
+audio_buffer_size = 4096
