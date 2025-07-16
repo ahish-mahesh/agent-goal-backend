@@ -64,14 +64,22 @@ pub struct ServerConfig {
 /// ## Fields:
 /// - `whisper_model`: Which Whisper model to use for speech recognition ("tiny", "base", "small", "medium", "large")
 /// - `llm_model`: Which language model to use for text processing (e.g., "llama3.1:8b", "phi-3:medium")
+/// - `device`: Preferred compute device ("auto", "cpu", "cuda", "metal")
 /// 
 /// ## Model size trade-offs:
 /// - Smaller models: Faster processing, less memory, lower accuracy
 /// - Larger models: Slower processing, more memory, higher accuracy
+/// 
+/// ## Device options:
+/// - "auto": Automatically select best available device (GPU if available, otherwise CPU)
+/// - "cpu": Force CPU usage (slower but always available)
+/// - "cuda": Force NVIDIA GPU usage (falls back to CPU if not available)
+/// - "metal": Force Apple Metal GPU usage (falls back to CPU if not available)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelsConfig {
     pub whisper_model: String,
     pub llm_model: String,
+    pub device: String,
 }
 
 /// Performance tuning configuration.
@@ -134,6 +142,7 @@ impl Default for AppConfig {
             models: ModelsConfig {
                 whisper_model: "medium".to_string(),     // Good balance of accuracy and speed
                 llm_model: "llama3.1:8b".to_string(),    // Recommended LLM model
+                device: "auto".to_string(),              // Automatically select best device
             },
             performance: PerformanceConfig {
                 max_concurrent_sessions: 10,   // Reasonable for most development machines

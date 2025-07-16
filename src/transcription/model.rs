@@ -330,8 +330,8 @@ impl WhisperModel {
         };
         
         // Validate the model
-        tracing::info!("Skipping validation for now, assuming model is valid");
-        // whisper_model.validate().await?;
+        // tracing::info!("Skipping validation for now, assuming model is valid");
+        whisper_model.validate().await?;
         
         Ok(whisper_model)
     }

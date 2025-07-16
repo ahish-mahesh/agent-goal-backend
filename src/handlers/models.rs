@@ -14,6 +14,7 @@ use crate::{error::AppError, state::AppState};
 use crate::transcription::model::ModelSize;
 use crate::transcription::engine::TranscriptionEngine;
 use crate::transcription::registry::{ModelRegistry};
+use crate::device::{DeviceManager, create_device_from_string};
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -152,17 +153,18 @@ pub async fn load_whisper_model(
     let model_size: ModelSize = request.model_size.parse()
         .map_err(|e| AppError::ValidationError(format!("Invalid model size: {}", e)))?;
     
-    // Determine device
-    let device = match request.device.as_deref() {
-        Some("gpu") => {
-            // TODO: Implement GPU detection
-            Device::Cpu // Fallback to CPU for now
-        }
-        Some("cpu") | None => Device::Cpu,
-        Some(other) => {
-            return Err(AppError::ValidationError(format!("Invalid device: {}", other)));
-        }
+    // Determine device using the new device manager
+    let device = if let Some(device_str) = &request.device {
+        create_device_from_string(device_str)
+    } else {
+        // Use device preference from config if not specified in request
+        let config = app_state.get_config();
+        create_device_from_string(&config.models.device)
     };
+    
+    tracing::info!("Loading model {} on device: {}", 
+        request.model_size, 
+        DeviceManager::get_device_info(&device));
     
     // Create transcription engine and load model
     let config = app_state.get_config();
@@ -311,8 +313,44 @@ pub async fn get_model_status(
             "max_concurrent_models": summary.max_concurrent_models
         },
         "current_model": current_model_info,
-        "device": "cpu" // TODO: Dynamic device detection
+        "device": {
+            "current": DeviceManager::get_device_info(&create_device_from_string(&app_state.get_config().models.device)),
+            "cuda_available": DeviceManager::is_cuda_available(),
+            "metal_available": DeviceManager::is_metal_available(),
+            "gpu_available": DeviceManager::is_gpu_available()
+        }
     })))
+}
+
+/// Get device status and capabilities
+/// 
+/// GET /models/device
+pub async fn get_device_status(app_state: web::Data<AppState>) -> Result<HttpResponse, AppError> {
+    let config = app_state.get_config();
+    let device_summary = DeviceManager::get_device_summary();
+    let best_device = DeviceManager::get_best_device();
+    let current_device = create_device_from_string(&config.models.device);
+    
+    let device_status = json!({
+        "device_detection": {
+            "cuda_available": device_summary.cuda_available,
+            "metal_available": device_summary.metal_available,
+            "gpu_available": device_summary.gpu_available,
+            "best_available": DeviceManager::get_device_info(&best_device),
+        },
+        "current_configuration": {
+            "config_device_preference": config.models.device,
+            "actual_device": DeviceManager::get_device_info(&current_device),
+        },
+        "device_options": {
+            "auto": "Automatically select best available device",
+            "cpu": "Force CPU usage (always available)",
+            "cuda": "Force NVIDIA GPU usage (fallback to CPU)",
+            "metal": "Force Apple Metal GPU usage (fallback to CPU)",
+        }
+    });
+    
+    Ok(HttpResponse::Ok().json(device_status))
 }
 
 /// Transcribe an uploaded audio file for testing purposes.

@@ -5,11 +5,11 @@
 
 use actix_web::{web, HttpResponse, Result as ActixResult};
 use serde::{Deserialize, Serialize};
-use candle_core::Device;
 
 use crate::transcription::engine::{TranscriptionEngine, TranscriptionConfig};
 use crate::transcription::model::ModelSize;
 use crate::error::AppError;
+use crate::device::{DeviceManager, create_device_from_string};
 
 /// Request to test model loading
 #[derive(Debug, Deserialize)]
@@ -63,7 +63,8 @@ pub async fn test_model_load(
     
     // Create transcription engine with default config
     let config = TranscriptionConfig::default();
-    let device = Device::Cpu; // Use CPU for debugging to avoid GPU issues
+    let device = create_device_from_string("cpu"); // Use CPU for debugging for stability
+    tracing::info!("Debug endpoint using device: {}", DeviceManager::get_device_info(&device));
     let engine = TranscriptionEngine::new(config, device);
     
     // Attempt to load the model
@@ -114,7 +115,7 @@ pub async fn test_transcription(
     
     // Create transcription engine
     let config = TranscriptionConfig::default();
-    let device = Device::Cpu;
+    let device = create_device_from_string("cpu"); // Use CPU for debugging for stability
     let engine = TranscriptionEngine::new(config, device);
     
     // Load the model first
@@ -175,6 +176,9 @@ pub async fn test_transcription(
 /// 
 /// GET /debug/environment
 pub async fn debug_environment() -> ActixResult<HttpResponse, AppError> {
+    let device_summary = DeviceManager::get_device_summary();
+    let best_device = DeviceManager::get_best_device();
+    
     let env_info = serde_json::json!({
         "hf_hub_url": std::env::var("HF_HUB_URL").unwrap_or_else(|_| "not set".to_string()),
         "hf_home": std::env::var("HF_HOME").unwrap_or_else(|_| "not set".to_string()),
@@ -182,7 +186,12 @@ pub async fn debug_environment() -> ActixResult<HttpResponse, AppError> {
         "http_proxy": std::env::var("HTTP_PROXY").unwrap_or_else(|_| "not set".to_string()),
         "https_proxy": std::env::var("HTTPS_PROXY").unwrap_or_else(|_| "not set".to_string()),
         "no_proxy": std::env::var("NO_PROXY").unwrap_or_else(|_| "not set".to_string()),
-        "device": "CPU (forced for debugging)",
+        "device_info": {
+            "current_best": DeviceManager::get_device_info(&best_device),
+            "cuda_available": device_summary.cuda_available,
+            "metal_available": device_summary.metal_available,
+            "gpu_available": device_summary.gpu_available,
+        },
         "available_models": ["tiny", "base", "small", "medium", "large"],
     });
     

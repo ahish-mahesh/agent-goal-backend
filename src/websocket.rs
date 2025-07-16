@@ -21,6 +21,7 @@ use crate::audio::buffer::AudioBufferConfig;
 use crate::audio::processor::{AudioProcessor, AudioConfig as ProcessorAudioConfig};
 use crate::transcription::engine::TranscriptionEngine;
 use crate::transcription::registry::ModelRegistry;
+use crate::device::{DeviceManager, create_device_from_string};
 
 use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
 use actix_web_actors::ws;
@@ -29,7 +30,6 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use candle_core::Device;
 use tracing::{info, warn, error, debug};
 
 /// WebSocket message types for client-server communication.
@@ -791,8 +791,9 @@ pub async fn audio_websocket(
     debug!("WebSocket query parameters: {:?}", query.iter().collect::<Vec<_>>());
     
     // Initialize transcription components
-    let device = Device::Cpu; // TODO: Support GPU detection
     let config = app_state.get_config();
+    let device = create_device_from_string(&config.models.device);
+    tracing::info!("WebSocket using device: {}", DeviceManager::get_device_info(&device));
     let transcription_config = config.audio.to_transcription_config();
     let transcription_engine = Arc::new(RwLock::new(
         TranscriptionEngine::new(transcription_config, device)

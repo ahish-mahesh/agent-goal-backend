@@ -28,6 +28,7 @@ mod handlers;      // HTTP request handlers (handlers/ directory)
 mod audio;         // Audio processing and buffer management
 mod transcription; // Speech-to-text transcription with Whisper
 mod websocket;     // WebSocket handlers for real-time audio streaming
+mod device;        // GPU/CPU device detection and management
 
 // External crate imports - These are dependencies from Cargo.toml
 use actix_cors::Cors;  // Cross-Origin Resource Sharing support
@@ -121,6 +122,7 @@ async fn main() -> Result<()> {
                     .route("/models/whisper/load", web::post().to(handlers::load_whisper_model))
                     .route("/models/whisper/unload", web::post().to(handlers::unload_whisper_model))
                     .route("/models/status", web::get().to(handlers::get_model_status))
+                    .route("/models/device", web::get().to(handlers::get_device_status))
                     // File transcription test endpoint
                     .route("/transcribe/file", web::post().to(handlers::transcribe_file))
             )
